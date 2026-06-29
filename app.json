@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Lifty",
+    "slug": "lifty-app",
+    "version": "1.0.0",
+    "scheme": "lifty",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.lifty.conductor"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0D2B45"
+      },
+      "package": "com.lifty.conductor",
+      "versionCode": 1
+    },
+    "experiments": {
+      "reactCompiler": true
+    },
+    "plugins": [
+      "expo-font",
+      "expo-router"
+    ]
+  }
+}
