@@ -2,16 +2,22 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+type DriverStatusValue = 'pending' | 'approved' | 'under_review' | 'rejected' | 'suspended' | null;
+
 interface AuthState {
   token: string | null;
   refreshToken: string | null;
   driverId: string | null;
   isAuthenticated: boolean;
   needsRedirect: boolean;
+  phone: string | null;
+  driverStatus: DriverStatusValue;
   setTokens: (token: string, refreshToken: string) => void;
   setDriverId: (driverId: string) => void;
   clearAuth: () => void;
   resetRedirect: () => void;
+  setPhone: (phone: string) => void;
+  setDriverStatus: (status: DriverStatusValue) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -22,6 +28,8 @@ export const useAuthStore = create<AuthState>()(
       driverId: null,
       isAuthenticated: false,
       needsRedirect: false,
+      phone: null,
+      driverStatus: null,
       setTokens: (token, refreshToken) =>
         set({ token, refreshToken, isAuthenticated: true }),
       setDriverId: (driverId) => set({ driverId }),
@@ -32,8 +40,12 @@ export const useAuthStore = create<AuthState>()(
           driverId: null,
           isAuthenticated: false,
           needsRedirect: true,
+          phone: null,
+          driverStatus: null,
         }),
       resetRedirect: () => set({ needsRedirect: false }),
+      setPhone: (phone) => set({ phone }),
+      setDriverStatus: (driverStatus) => set({ driverStatus }),
     }),
     {
       name: 'lifty-auth',
@@ -43,6 +55,8 @@ export const useAuthStore = create<AuthState>()(
         refreshToken: state.refreshToken,
         driverId: state.driverId,
         isAuthenticated: state.isAuthenticated,
+        phone: state.phone,
+        driverStatus: state.driverStatus,
       }),
     }
   )

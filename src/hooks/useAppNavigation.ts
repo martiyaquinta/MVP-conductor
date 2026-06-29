@@ -24,17 +24,29 @@ const SCREEN_TO_ROUTE: Record<string, string> = {
   PaymentMethod: '/payment-method',
 };
 
+type RouteParams = Record<string, string>;
+
 export function useAppNavigation() {
   const router = useRouter();
   return {
-    navigate: (screen: string) => {
+    navigate: (screen: string, params?: RouteParams) => {
       const route = SCREEN_TO_ROUTE[screen];
-      if (route) router.push(route as any);
+      if (!route) return;
+      if (params) {
+        router.push({ pathname: route as any, params });
+      } else {
+        router.push(route as any);
+      }
     },
     goBack: () => router.back(),
-    replace: (screen: string) => {
+    replace: (screen: string, params?: RouteParams) => {
       const route = SCREEN_TO_ROUTE[screen];
-      if (route) router.replace(route as any);
+      if (!route) return;
+      if (params) {
+        router.replace({ pathname: route as any, params });
+      } else {
+        router.replace(route as any);
+      }
     },
   };
 }

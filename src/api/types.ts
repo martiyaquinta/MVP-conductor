@@ -52,14 +52,7 @@ export const driverSchema = z.object({
 });
 
 export const driverStatusSchema = z.object({
-  status: z.enum(['pending', 'approved', 'rejected', 'suspended']),
-});
-
-export const earningsDailySchema = z.object({
-  total: z.number(),
-  cash: z.number(),
-  transfer: z.number(),
-  trip_count: z.number(),
+  status: z.enum(['pending', 'approved', 'under_review', 'rejected', 'suspended']),
 });
 
 export const tripSchema = z.object({
@@ -87,6 +80,14 @@ export const tripSchema = z.object({
   is_collected: z.boolean(),
   created_at: z.string(),
   updated_at: z.string(),
+});
+
+export const earningsDailySchema = z.object({
+  total: z.number(),
+  cash: z.number(),
+  transfer: z.number(),
+  trip_count: z.number(),
+  trips: z.array(tripSchema).optional(),
 });
 
 export const paymentMethodSchema = z.object({

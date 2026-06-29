@@ -57,8 +57,8 @@ export const TermsScreen: React.FC = () => {
       </ScrollView>
       <View style={styles.footer}>
         <Button
-          title="CERRAR Y VOLVER"
-          onPress={() => navigation.goBack()}
+          title="ACEPTAR Y CONTINUAR"
+          onPress={() => navigation.navigate('OnboardingStep1')}
           style={styles.button}
         />
       </View>

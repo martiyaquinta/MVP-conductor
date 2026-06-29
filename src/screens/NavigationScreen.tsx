@@ -1,16 +1,48 @@
-import React from 'react';
-import { View, Text, StyleSheet, StatusBar } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, StatusBar, Alert } from 'react-native';
 import { theme } from '../theme';
 import { Button } from '../components/Button';
+import { MapView } from '../components/MapView';
+import { apiClient } from '../api/client';
+import { useTripStore } from '../store/tripStore';
 import { useAppNavigation } from '../hooks/useAppNavigation';
+
+const PASSENGER_COORD: [number, number] = [-65.1833, -31.9333];
 
 export const NavigationScreen: React.FC = () => {
   const navigation = useAppNavigation();
+  const [loading, setLoading] = useState(false);
+  const activeTripId = useTripStore((s) => s.activeTripId) ?? 'mock-trip-123';
+  const setTripStatus = useTripStore((s) => s.setTripStatus);
+
+  const handleArrive = async () => {
+    setLoading(true);
+    try {
+      await apiClient.put(`/trips/${activeTripId}/arrive`);
+      setTripStatus('driver_arrived');
+      navigation.navigate('WaitingPassenger');
+    } catch {
+      Alert.alert('Error', 'No se pudo confirmar la llegada.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
       <View style={styles.mapArea}>
-        <Text style={styles.mapPlaceholder}>🗺  Mapa</Text>
+        <MapView
+          followUserLocation
+          markers={[
+            {
+              id: 'pickup',
+              coordinate: PASSENGER_COORD,
+              title: 'Pasajero',
+              color: theme.colors.dangerRed,
+            },
+          ]}
+        />
       </View>
       <View style={styles.bottomCard}>
         <Text style={styles.label}>Rumbo al pasajero</Text>
@@ -34,7 +66,8 @@ export const NavigationScreen: React.FC = () => {
         </View>
         <Button
           title="LLEGUE"
-          onPress={() => navigation.navigate('WaitingPassenger')}
+          onPress={handleArrive}
+          loading={loading}
           style={styles.arrivedButton}
         />
       </View>
@@ -50,12 +83,6 @@ const styles = StyleSheet.create({
   mapArea: {
     height: 528,
     backgroundColor: theme.colors.lightGray,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mapPlaceholder: {
-    fontSize: theme.fontSize.xl,
-    color: theme.colors.mediumGray,
   },
   bottomCard: {
     flex: 1,

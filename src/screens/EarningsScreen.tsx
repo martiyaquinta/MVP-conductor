@@ -1,18 +1,55 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, StatusBar } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, StatusBar, TouchableOpacity } from 'react-native';
+import { useQuery } from '@tanstack/react-query';
 import { theme } from '../theme';
 import { Card } from '../components/Card';
 import { TabBar } from '../components/TabBar';
+import { SkeletonCard } from '../components/feedback/SkeletonCard';
 import { useAppNavigation } from '../hooks/useAppNavigation';
+import { apiClient } from '../api/client';
+import type { EarningsDaily } from '../api/types';
 
 export const EarningsScreen: React.FC = () => {
   const navigation = useAppNavigation();
   const [activeTab, setActiveTab] = React.useState<'home' | 'earnings' | 'profile'>('earnings');
 
+  const {
+    data: earnings,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery<EarningsDaily>({
+    queryKey: ['earnings-daily'],
+    queryFn: async () => {
+      const response = await apiClient.get('/drivers/me/earnings/daily');
+      return response.data.data ?? response.data;
+    },
+    refetchInterval: 60_000,
+  });
+
   const handleTabPress = (tab: 'home' | 'earnings' | 'profile') => {
     setActiveTab(tab);
     if (tab === 'home') navigation.navigate('Online');
     if (tab === 'profile') navigation.navigate('Profile');
+  };
+
+  const formatCurrency = (amount: number) =>
+    `$${amount.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const formatTime = (iso: string) => {
+    const date = new Date(iso);
+    return date.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const shortAddress = (address: string) => {
+    const parts = address.split(',');
+    return parts.length > 1 ? parts[0].trim() : address;
+  };
+
+  const paymentMethodLabel = (method: string | null) => {
+    if (method === 'cash') return 'Efectivo';
+    if (method === 'mercadopago') return 'Mercado Pago';
+    return '—';
   };
 
   return (
@@ -25,48 +62,136 @@ export const EarningsScreen: React.FC = () => {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Card style={styles.saldoCard} padding={theme.spacing.lg}>
-          <Text style={styles.saldoLabel}>Saldo acumulado</Text>
-          <Text style={styles.saldoAmount}>$2.700</Text>
-          <Text style={styles.saldoInfo}>Se transfiere hoy a las 20hs</Text>
-        </Card>
+        {isLoading ? (
+          <>
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </>
+        ) : error ? (
+          <View style={styles.errorSection}>
+            <Card style={styles.errorCard} padding={theme.spacing.lg}>
+              <Text style={styles.errorText}>No se pudo cargar</Text>
+              <TouchableOpacity onPress={() => refetch()}>
+                <Text style={styles.retryText}>Reintentar</Text>
+              </TouchableOpacity>
+            </Card>
+          </View>
+        ) : earnings && earnings.total > 0 ? (
+          <>
+            <Card style={styles.totalCard} padding={theme.spacing.lg}>
+              <Text style={styles.totalLabel}>Ganaste hoy</Text>
+              <Text style={styles.totalAmount}>
+                {formatCurrency(earnings.total)}
+              </Text>
+            </Card>
 
-        <Card>
-          <Text style={styles.cardTitle}>Desglose de hoy</Text>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>💵 Efectivo</Text>
-            <Text style={styles.rowValue}>$1.500</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>🏦 Transferencia</Text>
-            <Text style={[styles.rowValue, { color: theme.colors.turquoise }]}>$2.700</Text>
-          </View>
-          <View style={styles.divider} />
-          <View style={styles.row}>
-            <Text style={[styles.rowLabel, { fontWeight: theme.fontWeight.bold }]}>Total hoy</Text>
-            <Text style={[styles.rowValue, { fontWeight: theme.fontWeight.bold }]}>$4.200</Text>
-          </View>
-        </Card>
+            <Card>
+              <Text style={styles.cardTitle}>Desglose de hoy</Text>
+              <View style={styles.row}>
+                <Text style={styles.rowLabel}>💵 Efectivo</Text>
+                <Text style={styles.rowValue}>{formatCurrency(earnings.cash)}</Text>
+              </View>
+              <View style={styles.row}>
+                <Text style={styles.rowLabel}>🏦 Transferencia</Text>
+                <Text style={[styles.rowValue, { color: theme.colors.turquoise }]}>
+                  {formatCurrency(earnings.transfer)}
+                </Text>
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.row}>
+                <Text style={[styles.rowLabel, { fontWeight: theme.fontWeight.bold }]}>
+                  Total hoy
+                </Text>
+                <Text style={[styles.rowValue, { fontWeight: theme.fontWeight.bold }]}>
+                  {formatCurrency(earnings.total)}
+                </Text>
+              </View>
+            </Card>
 
-        <Card>
-          <Text style={styles.cardTitle}>Tus ganancias</Text>
-          <View style={styles.earningRow}>
-            <Text style={styles.earningLabel}>Ayer</Text>
-            <Text style={styles.earningAmount}>$3.800</Text>
-          </View>
-          <View style={styles.earningRow}>
-            <Text style={styles.earningLabel}>Esta semana</Text>
-            <Text style={styles.earningAmount}>$12.800</Text>
-          </View>
-        </Card>
+            <Card>
+              <Text style={styles.cardTitle}>Tus ganancias</Text>
+              <View style={styles.earningRow}>
+                <Text style={styles.earningLabel}>Ayer</Text>
+                <Text style={styles.earningAmount}>$3.800</Text>
+              </View>
+              <View style={styles.earningRow}>
+                <Text style={styles.earningLabel}>Esta semana</Text>
+                <Text style={styles.earningAmount}>$12.800</Text>
+              </View>
+            </Card>
 
-        <Card>
-          <Text style={styles.cardTitle}>Metodo de cobro</Text>
-          <View style={styles.row}>
-            <Text style={styles.cvuText}>CVU: 0000-1234-5678-9012</Text>
-            <Text style={styles.changeLink}>Cambiar →</Text>
-          </View>
-        </Card>
+            {earnings.trips && earnings.trips.length > 0 && (
+              <Card>
+                <Text style={styles.cardTitle}>Viajes de hoy</Text>
+                {earnings.trips.map((trip) => (
+                  <View key={trip.id} style={styles.tripRow}>
+                    <View style={styles.tripLeft}>
+                      <Text style={styles.tripTime}>{formatTime(trip.created_at)}</Text>
+                      <Text style={styles.tripOrigin} numberOfLines={1}>
+                        {shortAddress(trip.pickup_address)}
+                      </Text>
+                    </View>
+                    <View style={styles.tripRight}>
+                      <Text style={styles.tripAmount}>
+                        {formatCurrency(trip.driver_earnings)}
+                      </Text>
+                      <Text style={styles.tripPayment}>
+                        {paymentMethodLabel(trip.payment_method)}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </Card>
+            )}
+
+            <Card>
+              <Text style={styles.cardTitle}>Metodo de cobro</Text>
+              <TouchableOpacity
+                style={styles.row}
+                onPress={() => navigation.navigate('PaymentMethod')}
+              >
+                <Text style={styles.cvuText}>
+                  Administrar metodos de pago
+                </Text>
+                <Text style={styles.changeLink}>Cambiar →</Text>
+              </TouchableOpacity>
+            </Card>
+          </>
+        ) : (
+          <>
+            <Card style={styles.totalCard} padding={theme.spacing.lg}>
+              <Text style={styles.totalLabel}>Ganaste hoy</Text>
+              <Text style={[styles.totalAmount, { color: theme.colors.mediumGray }]}>$0</Text>
+              <Text style={styles.emptySubtext}>Todavia no registras ganancias</Text>
+            </Card>
+
+            <Card>
+              <Text style={styles.cardTitle}>Tus ganancias</Text>
+              <View style={styles.earningRow}>
+                <Text style={styles.earningLabel}>Ayer</Text>
+                <Text style={styles.earningAmount}>$3.800</Text>
+              </View>
+              <View style={styles.earningRow}>
+                <Text style={styles.earningLabel}>Esta semana</Text>
+                <Text style={styles.earningAmount}>$12.800</Text>
+              </View>
+            </Card>
+
+            <Card>
+              <Text style={styles.cardTitle}>Metodo de cobro</Text>
+              <TouchableOpacity
+                style={styles.row}
+                onPress={() => navigation.navigate('PaymentMethod')}
+              >
+                <Text style={styles.cvuText}>
+                  Administrar metodos de pago
+                </Text>
+                <Text style={styles.changeLink}>Cambiar →</Text>
+              </TouchableOpacity>
+            </Card>
+          </>
+        )}
       </ScrollView>
 
       <TabBar activeTab={activeTab} onTabPress={handleTabPress} />
@@ -98,24 +223,25 @@ const styles = StyleSheet.create({
     gap: theme.spacing.md,
     paddingBottom: theme.spacing.lg,
   },
-  saldoCard: {
+  totalCard: {
     width: 343,
     alignItems: 'center',
     gap: theme.spacing.xs,
   },
-  saldoLabel: {
+  totalLabel: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.bold,
     color: theme.colors.deepBlue,
   },
-  saldoAmount: {
+  totalAmount: {
     fontSize: 36,
     fontWeight: theme.fontWeight.bold,
     color: theme.colors.turquoise,
   },
-  saldoInfo: {
+  emptySubtext: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.mediumGray,
+    marginTop: 4,
   },
   cardTitle: {
     fontSize: theme.fontSize.sm,
@@ -158,6 +284,42 @@ const styles = StyleSheet.create({
     fontWeight: theme.fontWeight.bold,
     color: theme.colors.deepBlue,
   },
+  tripRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: theme.spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.lightGray,
+  },
+  tripLeft: {
+    flex: 1,
+    gap: 2,
+  },
+  tripTime: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+    color: theme.colors.deepBlue,
+  },
+  tripOrigin: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.mediumGray,
+    width: 200,
+  },
+  tripRight: {
+    alignItems: 'flex-end',
+    gap: 2,
+  },
+  tripAmount: {
+    fontSize: theme.fontSize.md,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.deepBlue,
+  },
+  tripPayment: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.turquoise,
+    fontWeight: theme.fontWeight.medium,
+  },
   cvuText: {
     fontSize: theme.fontSize.md,
     fontWeight: theme.fontWeight.medium,
@@ -167,5 +329,22 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
     color: theme.colors.turquoise,
+  },
+  errorSection: {
+    width: 343,
+    gap: theme.spacing.md,
+  },
+  errorCard: {
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+  errorText: {
+    fontSize: theme.fontSize.md,
+    color: theme.colors.dangerRed,
+  },
+  retryText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.turquoise,
+    fontWeight: theme.fontWeight.medium,
   },
 });

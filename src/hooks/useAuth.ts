@@ -17,6 +17,7 @@ export function useSignIn() {
 
 export function useVerifyOTP() {
   const setTokens = useAuthStore((s) => s.setTokens);
+  const setDriverId = useAuthStore((s) => s.setDriverId);
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -35,6 +36,7 @@ export function useVerifyOTP() {
           data.session.access_token,
           data.session.refresh_token ?? ''
         );
+        setDriverId(data.session.user.id);
       }
       queryClient.invalidateQueries();
     },

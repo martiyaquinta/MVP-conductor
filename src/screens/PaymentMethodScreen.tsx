@@ -1,75 +1,184 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, StatusBar } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, StatusBar, Alert } from 'react-native';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { theme } from '../theme';
 import { Navbar } from '../components/Navbar';
 import { Input } from '../components/Input';
 import { Button } from '../components/Button';
+import { Card } from '../components/Card';
+import { SkeletonCard } from '../components/feedback/SkeletonCard';
 import { useAppNavigation } from '../hooks/useAppNavigation';
+import { apiClient } from '../api/client';
+import type { PaymentMethod } from '../api/types';
 
 export const PaymentMethodScreen: React.FC = () => {
   const navigation = useAppNavigation();
-  const [selected, setSelected] = useState<'cash' | 'transfer'>('cash');
+  const queryClient = useQueryClient();
+
+  const [alias, setAlias] = useState('');
+  const [cvu, setCvu] = useState('');
+  const [bank, setBank] = useState('');
+  const [showForm, setShowForm] = useState(false);
+
+  const {
+    data: methods,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery<PaymentMethod[]>({
+    queryKey: ['payment-methods'],
+    queryFn: async () => {
+      const response = await apiClient.get('/drivers/me/payment-methods');
+      return response.data.data ?? response.data;
+    },
+  });
+
+  const addMutation = useMutation({
+    mutationFn: async (body: { cvu: string; alias: string; bank: string }) => {
+      await apiClient.post('/drivers/me/payment-methods', body);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payment-methods'] });
+      setAlias('');
+      setCvu('');
+      setBank('');
+      setShowForm(false);
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : 'Error al agregar metodo de pago';
+      Alert.alert('Error', msg);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiClient.delete(`/drivers/me/payment-methods/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payment-methods'] });
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : 'Error al eliminar metodo de pago';
+      Alert.alert('Error', msg);
+    },
+  });
+
+  const handleDelete = (method: PaymentMethod) => {
+    Alert.alert('Eliminar metodo de pago', `Eliminar CVU ${method.cvu}?`, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Eliminar',
+        style: 'destructive',
+        onPress: () => deleteMutation.mutate(method.id),
+      },
+    ]);
+  };
+
+  const isCvuValid = cvu.replace(/\D/g, '').length === 22;
+
+  const handleAdd = () => {
+    if (!isCvuValid || !alias.trim()) return;
+    addMutation.mutate({ cvu: cvu.replace(/\D/g, ''), alias: alias.trim(), bank: bank.trim() });
+  };
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={theme.colors.deepBlue} />
-      <Navbar
-        title="Metodo de cobro"
-        onBack={() => navigation.goBack()}
-      />
+      <Navbar title="Metodo de cobro" onBack={() => navigation.goBack()} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>Como queres cobrar?</Text>
+        <Text style={styles.title}>Tus metodos de pago</Text>
 
-        <TouchableOpacity
-          style={[styles.option, selected === 'cash' && styles.optionSelected]}
-          onPress={() => setSelected('cash')}
-        >
-          <View style={styles.optionHeader}>
-            <Text style={styles.optionIcon}>💵</Text>
-            <View style={styles.optionInfo}>
-              <Text style={styles.optionTitle}>Efectivo</Text>
-              <Text style={styles.optionSubtitle}>Cobras en efectivo al finalizar cada viaje</Text>
+        {isLoading ? (
+          <>
+            <SkeletonCard />
+            <SkeletonCard />
+          </>
+        ) : error ? (
+          <Card style={styles.errorCard} padding={theme.spacing.lg}>
+            <Text style={styles.errorText}>No se pudo cargar</Text>
+            <TouchableOpacity onPress={() => refetch()}>
+              <Text style={styles.retryText}>Reintentar</Text>
+            </TouchableOpacity>
+          </Card>
+        ) : methods && methods.length > 0 ? (
+          methods.map((method) => (
+            <View key={method.id} style={styles.methodCard}>
+              <View style={styles.methodInfo}>
+                <Text style={styles.methodAlias}>{method.alias ?? 'CVU'}</Text>
+                <Text style={styles.methodCvu}>{method.cvu}</Text>
+                {method.bank ? <Text style={styles.methodBank}>{method.bank}</Text> : null}
+              </View>
+              <TouchableOpacity
+                onPress={() => handleDelete(method)}
+                style={styles.deleteButton}
+              >
+                <Text style={styles.deleteIcon}>✕</Text>
+              </TouchableOpacity>
             </View>
-          </View>
-          {selected === 'cash' && (
-            <View style={styles.checkmark}>
-              <Text style={styles.checkmarkText}>✓</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.option, selected === 'transfer' && styles.optionSelected]}
-          onPress={() => setSelected('transfer')}
-        >
-          <View style={styles.optionHeader}>
-            <Text style={styles.optionIcon}>🏦</Text>
-            <View style={styles.optionInfo}>
-              <Text style={styles.optionTitle}>Transferencia</Text>
-              <Text style={styles.optionSubtitle}>Recibis el pago en tu cuenta bancaria</Text>
-            </View>
-          </View>
-          {selected === 'transfer' && (
-            <View style={styles.checkmark}>
-              <Text style={styles.checkmarkText}>✓</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-
-        {selected === 'transfer' && (
-          <View style={styles.cvuSection}>
-            <Input placeholder="CVU / Alias" containerStyle={styles.input} />
-            <Text style={styles.cvuHelp}>
-              Encontra tu CVU en la app de tu banco
+          ))
+        ) : (
+          <Card style={styles.emptyCard} padding={theme.spacing.lg}>
+            <Text style={styles.emptyText}>
+              Agrega un CVU para recibir transferencias
             </Text>
-          </View>
+          </Card>
         )}
 
-        <Button
-          title="GUARDAR"
-          onPress={() => navigation.goBack()}
-          style={styles.button}
-        />
+        {!showForm ? (
+          <Button
+            title="AGREGAR METODO DE PAGO"
+            onPress={() => setShowForm(true)}
+            style={styles.addButton}
+          />
+        ) : (
+          <View style={styles.formSection}>
+            <Input
+              label="Alias"
+              placeholder="Ej: Mi Cuenta"
+              value={alias}
+              onChangeText={setAlias}
+            />
+            <Input
+              label="CVU"
+              placeholder="0000000000000000000000"
+              value={cvu}
+              onChangeText={(text) => setCvu(text.replace(/\D/g, '').slice(0, 22))}
+              keyboardType="numeric"
+              maxLength={22}
+              error={
+                cvu.length > 0 && cvu.replace(/\D/g, '').length !== 22
+                  ? 'El CVU debe tener exactamente 22 digitos'
+                  : undefined
+              }
+            />
+            <Input
+              label="Banco (opcional)"
+              placeholder="Ej: Banco Provincia"
+              value={bank}
+              onChangeText={setBank}
+            />
+            <View style={styles.formButtons}>
+              <Button
+                title="Cancelar"
+                variant="secondary"
+                onPress={() => {
+                  setShowForm(false);
+                  setAlias('');
+                  setCvu('');
+                  setBank('');
+                }}
+                style={styles.cancelButton}
+              />
+              <Button
+                title="Agregar"
+                onPress={handleAdd}
+                disabled={!isCvuValid || !alias.trim()}
+                loading={addMutation.isPending}
+                style={styles.submitButton}
+              />
+            </View>
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -95,67 +204,92 @@ const styles = StyleSheet.create({
     marginLeft: 'auto',
     marginRight: 'auto',
   },
-  option: {
+  methodCard: {
     width: 343,
-    borderRadius: theme.radius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.mediumGray,
     backgroundColor: theme.colors.white,
+    borderRadius: theme.radius.lg,
     padding: theme.spacing.md,
-    gap: theme.spacing.md,
-  },
-  optionSelected: {
-    borderColor: theme.colors.turquoise,
-    borderWidth: 2,
-  },
-  optionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: theme.spacing.md,
+    justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  optionIcon: {
-    fontSize: 24,
-  },
-  optionInfo: {
+  methodInfo: {
     flex: 1,
-    gap: 2,
+    gap: 4,
   },
-  optionTitle: {
+  methodAlias: {
     fontSize: theme.fontSize.md,
     fontWeight: theme.fontWeight.bold,
     color: theme.colors.deepBlue,
   },
-  optionSubtitle: {
+  methodCvu: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.mediumGray,
   },
-  checkmark: {
-    width: 24,
-    height: 24,
+  methodBank: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.turquoise,
+    fontWeight: theme.fontWeight.medium,
+    marginTop: 2,
+  },
+  deleteButton: {
+    width: 36,
+    height: 36,
     borderRadius: theme.radius.full,
-    backgroundColor: theme.colors.turquoise,
+    backgroundColor: theme.colors.lightGray,
     alignItems: 'center',
     justifyContent: 'center',
-    alignSelf: 'flex-end',
   },
-  checkmarkText: {
-    color: theme.colors.white,
+  deleteIcon: {
+    color: theme.colors.dangerRed,
     fontSize: 14,
     fontWeight: theme.fontWeight.bold,
   },
-  cvuSection: {
-    width: 343,
-    gap: theme.spacing.xs,
+  emptyCard: {
+    alignItems: 'center',
   },
-  input: {
-    width: 343,
-  },
-  cvuHelp: {
-    fontSize: theme.fontSize.xs,
+  emptyText: {
+    fontSize: theme.fontSize.md,
     color: theme.colors.mediumGray,
+    textAlign: 'center',
   },
-  button: {
+  errorCard: {
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+  errorText: {
+    fontSize: theme.fontSize.md,
+    color: theme.colors.dangerRed,
+  },
+  retryText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.turquoise,
+    fontWeight: theme.fontWeight.medium,
+  },
+  addButton: {
     width: 343,
     marginTop: theme.spacing.md,
+  },
+  formSection: {
+    width: 343,
+    gap: theme.spacing.md,
+  },
+  formButtons: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.sm,
+  },
+  cancelButton: {
+    flex: 1,
+    width: undefined,
+  },
+  submitButton: {
+    flex: 1,
+    width: undefined,
   },
 });

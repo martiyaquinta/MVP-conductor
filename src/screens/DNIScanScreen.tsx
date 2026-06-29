@@ -1,14 +1,19 @@
 import React from 'react';
-import { View, Text, StyleSheet, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity } from 'react-native';
 import { theme } from '../theme';
 import { useAppNavigation } from '../hooks/useAppNavigation';
+import { Button } from '../components/Button';
 
-export const DNIScanScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
+export const DNIScanScreen: React.FC = () => {
+  const navigation = useAppNavigation();
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000" />
       <View style={styles.header}>
-        <Text style={styles.closeButton}>✕ Cerrar</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Text style={styles.closeButton}>✕ Cerrar</Text>
+        </TouchableOpacity>
       </View>
       <View style={styles.spacer} />
       <Text style={styles.instruction}>Escanea el frente de tu DNI</Text>
@@ -20,6 +25,12 @@ export const DNIScanScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
         Coloca el DNI dentro del recuadro.{'\n'}Asegurate de que tenga buena luz.
       </Text>
       <View style={styles.spacerLarge} />
+      <Button
+        title="Simular escaneo exitoso"
+        variant="primary"
+        onPress={() => navigation.navigate('Selfie')}
+        style={styles.button}
+      />
       <Text style={styles.brand}>Verificacion por DIDIT</Text>
     </View>
   );
@@ -77,6 +88,10 @@ const styles = StyleSheet.create({
   },
   spacerLarge: {
     height: 24,
+  },
+  button: {
+    width: 343,
+    marginBottom: theme.spacing.md,
   },
   brand: {
     color: theme.colors.mediumGray,

@@ -3,36 +3,86 @@ import { View, Text, StyleSheet, StatusBar } from 'react-native';
 import { theme } from '../theme';
 import { Navbar } from '../components/Navbar';
 import { Button } from '../components/Button';
+import { Input } from '../components/Input';
 import { useAppNavigation } from '../hooks/useAppNavigation';
+import { useSignIn } from '../hooks/useAuth';
+import { useAuthStore } from '../store/authStore';
+
+const ARGENTINA_COUNTRY_CODE = '+54';
+const MIN_PHONE_DIGITS = 10;
+
+function formatPhone(digits: string): string {
+  if (digits.length === 0) return '';
+  let result = digits[0];
+  if (digits.length > 1) result += ' ' + digits.slice(1, Math.min(digits.length, 3));
+  if (digits.length > 3) result += ' ' + digits.slice(3, Math.min(digits.length, 7));
+  if (digits.length > 7) result += '-' + digits.slice(7, 11);
+  return result;
+}
 
 export const LoginPhoneScreen: React.FC = () => {
   const navigation = useAppNavigation();
+  const signIn = useSignIn();
+  const storePhone = useAuthStore((s) => s.setPhone);
   const [phone, setPhone] = useState('');
+
+  const digits = phone.replace(/\D/g, '');
+  const isValid = digits.length >= MIN_PHONE_DIGITS;
+  const displayPhone = formatPhone(digits);
+
+  const handleContinue = async () => {
+    if (!isValid || signIn.isPending) return;
+    try {
+      await signIn.mutateAsync(ARGENTINA_COUNTRY_CODE + digits);
+      storePhone(digits);
+      navigation.navigate('LoginOTP');
+    } catch {
+      // error displayed via signIn.error
+    }
+  };
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" />
-      <View style={styles.logoCircle}>
-        <View style={styles.logoInner}>
-          <Text style={styles.logoLetter}>L</Text>
-        </View>
-      </View>
-      <Text style={styles.wordmark}>Lifty</Text>
-      <Text style={styles.tagline}>Movilidad que te eleva</Text>
-      <View style={styles.phoneInput}>
-        <Text style={styles.countryCode}>+54</Text>
-        <View style={styles.divider} />
-        <Text style={styles.phonePlaceholder}>Tu numero de telefono</Text>
-      </View>
-      <Button
-        title="CONTINUAR"
-        onPress={() => navigation.navigate('LoginOTP')}
-        disabled={true}
-        style={styles.button}
+      <StatusBar barStyle="light-content" />
+      <Navbar
+        title=""
+        showBack
+        onBack={() => navigation.goBack()}
+        backgroundColor={theme.colors.deepBlue}
       />
-      <Text style={styles.terms}>
-        Al continuar aceptas los Terminos y Condiciones
-      </Text>
+      <View style={styles.content}>
+        <View style={styles.logoCircle}>
+          <View style={styles.logoInner}>
+            <Text style={styles.logoLetter}>L</Text>
+          </View>
+        </View>
+        <Text style={styles.wordmark}>Lifty</Text>
+        <Text style={styles.title}>Ingresa tu telefono</Text>
+        <Text style={styles.subtitle}>
+          Te enviaremos un codigo de verificacion por WhatsApp
+        </Text>
+        <Input
+          leftElement={<Text style={styles.countryCode}>+54</Text>}
+          value={displayPhone}
+          onChangeText={(t) => setPhone(t.replace(/\D/g, ''))}
+          placeholder="9 XX XXXX-XXXX"
+          keyboardType="phone-pad"
+          error={signIn.error?.message}
+          containerStyle={styles.phoneInput}
+          testID="phone-input"
+        />
+        <Button
+          title="CONTINUAR"
+          onPress={handleContinue}
+          disabled={!isValid}
+          loading={signIn.isPending}
+          variant="primary"
+          style={styles.button}
+        />
+        <Text style={styles.terms}>
+          Al continuar aceptas los Terminos y Condiciones
+        </Text>
+      </View>
     </View>
   );
 };
@@ -41,10 +91,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.colors.deepBlue,
+  },
+  content: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: theme.spacing.lg,
-    gap: theme.spacing.lg,
+    gap: theme.spacing.md,
   },
   logoCircle: {
     width: 80,
@@ -72,34 +125,23 @@ const styles = StyleSheet.create({
     fontWeight: theme.fontWeight.bold,
     color: theme.colors.white,
   },
-  tagline: {
-    fontSize: theme.fontSize.md,
-    color: theme.colors.mediumGray,
+  title: {
+    fontSize: theme.fontSize.xl,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.white,
   },
-  phoneInput: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: theme.dimensions.inputHeight,
-    borderWidth: 1,
-    borderColor: theme.colors.mediumGray,
-    borderRadius: theme.radius.inputRadius,
-    paddingHorizontal: theme.spacing.md,
-    width: 327,
-    gap: theme.spacing.sm,
+  subtitle: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.mediumGray,
+    textAlign: 'center',
   },
   countryCode: {
-    color: theme.colors.white,
+    color: theme.colors.deepBlue,
     fontSize: theme.fontSize.md,
     fontWeight: theme.fontWeight.medium,
   },
-  divider: {
-    width: 1,
-    height: 24,
-    backgroundColor: theme.colors.mediumGray,
-  },
-  phonePlaceholder: {
-    color: theme.colors.mediumGray,
-    fontSize: theme.fontSize.md,
+  phoneInput: {
+    width: 327,
   },
   button: {
     width: 327,

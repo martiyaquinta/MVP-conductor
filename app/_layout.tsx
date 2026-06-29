@@ -7,7 +7,13 @@ import { queryClient } from '../src/lib/queryClient';
 import { ErrorBoundary } from '../src/components/feedback/ErrorBoundary';
 import { ConnectivityBanner } from '../src/components/feedback/ConnectivityBanner';
 import { useAuthStore } from '../src/store/authStore';
+import { supabase } from '../src/lib/supabase';
+import { getValidated, apiClient } from '../src/api/client';
+import { driverStatusSchema } from '../src/api/types';
 import { theme } from '../src/theme';
+import * as Notifications from 'expo-notifications';
+import { setupNotificationHandler, registerForPush, handleNotificationResponse } from '../src/lib/notifications';
+import { useAppNavigation } from '../src/hooks/useAppNavigation';
 
 function AuthRedirectWatcher() {
   const needsRedirect = useAuthStore((s) => s.needsRedirect);
@@ -16,11 +22,104 @@ function AuthRedirectWatcher() {
   const segments = useSegments();
 
   useEffect(() => {
-    if (needsRedirect && segments[0] !== undefined) {
+    if (needsRedirect) {
       resetRedirect();
-      router.replace('/');
+      if (segments[0] !== undefined) {
+        router.replace('/');
+      }
     }
   }, [needsRedirect, resetRedirect, router, segments]);
+
+  return null;
+}
+
+function SessionRestore() {
+  useEffect(() => {
+    const restore = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (data.session) {
+          useAuthStore.getState().setTokens(
+            data.session.access_token,
+            data.session.refresh_token ?? '',
+          );
+          useAuthStore.getState().setDriverId(data.session.user.id);
+
+          try {
+            const statusData = await getValidated('/drivers/me/status', driverStatusSchema);
+            useAuthStore.getState().setDriverStatus(statusData.status);
+          } catch {
+            // driver may not exist yet — silently ignore
+          }
+        }
+      } catch {
+        // getSession failed (network, SDK not ready) — app proceeds unauthenticated
+      }
+    };
+    restore();
+  }, []);
+
+  return null;
+}
+
+function ActiveTripRecovery() {
+  const driverId = useAuthStore((s) => s.driverId);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!driverId) return;
+    const check = async () => {
+      try {
+        const response = await apiClient.get('/drivers/me/trips/active');
+        const trip = response.data?.data ?? response.data;
+        if (trip) {
+          switch (trip.status) {
+            case 'accepted':
+              router.replace('/navigation');
+              break;
+            case 'driver_arrived':
+              router.replace('/waiting-passenger');
+              break;
+            case 'in_progress':
+              router.replace('/trip-in-progress');
+              break;
+            case 'requested':
+              router.replace('/incoming-request');
+              break;
+            default:
+              break;
+          }
+        }
+      } catch {
+        // no active trip or API error — stay on current screen
+      }
+    };
+    check();
+  }, [driverId, router]);
+
+  return null;
+}
+
+function NotificationSetup() {
+  const { navigate } = useAppNavigation();
+
+  useEffect(() => {
+    setupNotificationHandler();
+
+    registerForPush().then((token) => {
+      if (token) {
+        console.log('Expo push token:', token);
+      }
+    });
+
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      handleNotificationResponse(response, navigate);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   return null;
 }
@@ -32,6 +131,9 @@ export default function RootLayout() {
         <View style={styles.root}>
           <StatusBar style="auto" />
           <AuthRedirectWatcher />
+          <SessionRestore />
+          <ActiveTripRecovery />
+          <NotificationSetup />
           <ConnectivityBanner />
           <Stack
             screenOptions={{

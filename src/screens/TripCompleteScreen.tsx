@@ -1,21 +1,102 @@
-import React from 'react';
-import { View, Text, StyleSheet, StatusBar } from 'react-native';
+import React, { useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, StatusBar, Animated, Alert } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { theme } from '../theme';
 import { Button } from '../components/Button';
 import { TabBar } from '../components/TabBar';
+import { apiClient } from '../api/client';
+import { useTripStore } from '../store/tripStore';
 import { useAppNavigation } from '../hooks/useAppNavigation';
+
+const formatCurrency = (value: number) =>
+  `$${value.toLocaleString('es-AR')}`;
 
 export const TripCompleteScreen: React.FC = () => {
   const navigation = useAppNavigation();
+  const activeTripId = useTripStore((s) => s.activeTripId);
+  const clearTrip = useTripStore((s) => s.clearTrip);
   const [activeTab, setActiveTab] = React.useState<'home' | 'earnings' | 'profile'>('home');
+  const [collecting, setCollecting] = React.useState(false);
+
+  const { amount, commission, driverEarnings } = useLocalSearchParams<{
+    amount?: string;
+    commission?: string;
+    driverEarnings?: string;
+  }>();
+
+  const tripAmount = Number(amount) || 2500;
+  const tripCommission = Number(commission) || 500;
+  const tripDriverEarnings = Number(driverEarnings) || 2000;
+
+  const scaleAnim = useRef(new Animated.Value(0.8)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 100,
+        friction: 10,
+        useNativeDriver: true,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [fadeAnim, scaleAnim]);
+
+  const handleCollect = async () => {
+    if (!activeTripId) return;
+    setCollecting(true);
+    try {
+      await apiClient.put(`/trips/${activeTripId}/collect`);
+      Alert.alert('Cobrado', 'El viaje fue cobrado exitosamente.', [
+        {
+          text: 'OK',
+          onPress: () => {
+            clearTrip();
+            navigation.navigate('Online');
+          },
+        },
+      ]);
+    } catch {
+      Alert.alert('Error', 'No se pudo registrar el cobro.');
+    } finally {
+      setCollecting(false);
+    }
+  };
+
+  const handleGoHome = () => {
+    clearTrip();
+    navigation.navigate('Online');
+  };
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      <View style={styles.content}>
+      <Animated.View
+        style={[
+          styles.content,
+          {
+            opacity: fadeAnim,
+            transform: [{ scale: scaleAnim }],
+          },
+        ]}
+      >
         <Text style={styles.completedLabel}>Viaje completado!</Text>
         <Text style={styles.earnedLabel}>Ganaste</Text>
-        <Text style={styles.earnedAmount}>$2.500</Text>
+        <Text style={styles.earnedAmount}>{formatCurrency(tripAmount)}</Text>
+
+        <View style={styles.breakdown}>
+          <Text style={styles.breakdownItem}>
+            Comision Lifty: -{formatCurrency(tripCommission)}
+          </Text>
+          <Text style={styles.breakdownItemEarnings}>
+            Tu ganancia: {formatCurrency(tripDriverEarnings)}
+          </Text>
+        </View>
 
         <View style={styles.summaryCard}>
           <Text style={styles.summaryDestination}>Terminal de Omnibus</Text>
@@ -23,16 +104,18 @@ export const TripCompleteScreen: React.FC = () => {
         </View>
 
         <Button
-          title="Cobrar $2.500 · EFECTIVO"
-          onPress={() => navigation.navigate('PaymentMethod')}
+          title="Cobre en efectivo"
+          onPress={handleCollect}
+          loading={collecting}
           style={styles.button}
         />
         <Button
           title="VOLVER AL INICIO"
-          onPress={() => navigation.navigate('Online')}
+          variant="secondary"
+          onPress={handleGoHome}
           style={styles.button}
         />
-      </View>
+      </Animated.View>
       <TabBar activeTab={activeTab} onTabPress={setActiveTab} />
     </View>
   );
@@ -65,6 +148,20 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize['5xl'],
     fontWeight: theme.fontWeight.bold,
     color: theme.colors.turquoise,
+  },
+  breakdown: {
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+    marginTop: theme.spacing.sm,
+  },
+  breakdownItem: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.mediumGray,
+  },
+  breakdownItemEarnings: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.bold,
+    color: theme.colors.deepBlue,
   },
   summaryCard: {
     width: 300,

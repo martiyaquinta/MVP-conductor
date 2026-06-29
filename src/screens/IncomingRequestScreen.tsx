@@ -1,17 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, StatusBar } from 'react-native';
 import { theme } from '../theme';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { useAppNavigation } from '../hooks/useAppNavigation';
+import { apiClient } from '../api/client';
+import { useTripStore } from '../store/tripStore';
+
+const MOCK_TRIP_ID = 'mock-trip-123';
 
 export const IncomingRequestScreen: React.FC = () => {
   const navigation = useAppNavigation();
-  const [seconds, setSeconds] = useState(6);
+  const { setActiveTrip } = useTripStore();
+  const [seconds, setSeconds] = useState(8);
   const [accepted, setAccepted] = useState(false);
+  const timedOut = useRef(false);
 
   useEffect(() => {
-    if (accepted) return;
+    if (accepted || timedOut.current) return;
+    if (seconds <= 0) {
+      timedOut.current = true;
+      apiClient
+        .put(`/trips/${MOCK_TRIP_ID}/respond`, { action: 'timeout' })
+        .catch(() => {})
+        .finally(() => {
+          navigation.goBack();
+        });
+      return;
+    }
     const timer = setInterval(() => {
       setSeconds((prev) => {
         if (prev <= 1) {
@@ -22,11 +38,23 @@ export const IncomingRequestScreen: React.FC = () => {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [accepted]);
+  }, [seconds, accepted]);
 
-  const handleAccept = () => {
-    setAccepted(true);
-    navigation.navigate('Navigation');
+  const handleAccept = async () => {
+    try {
+      await apiClient.put(`/trips/${MOCK_TRIP_ID}/respond`, { action: 'accept' });
+      setActiveTrip(MOCK_TRIP_ID, 'accepted');
+      setAccepted(true);
+      navigation.navigate('Navigation');
+    } catch {
+    }
+  };
+
+  const handleReject = async () => {
+    try {
+      await apiClient.put(`/trips/${MOCK_TRIP_ID}/respond`, { action: 'reject' });
+    } catch {}
+    navigation.navigate('Online');
   };
 
   return (
@@ -70,7 +98,7 @@ export const IncomingRequestScreen: React.FC = () => {
             onPress={handleAccept}
             style={styles.button}
           />
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity onPress={handleReject}>
             <Text style={styles.rejectLink}>Rechazar</Text>
           </TouchableOpacity>
         </>

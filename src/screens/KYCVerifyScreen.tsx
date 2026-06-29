@@ -1,12 +1,27 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, StatusBar } from 'react-native';
 import { theme } from '../theme';
 import { Navbar } from '../components/Navbar';
 import { Button } from '../components/Button';
 import { useAppNavigation } from '../hooks/useAppNavigation';
+import { useAuthStore } from '../store/authStore';
 
 export const KYCVerifyScreen: React.FC = () => {
   const navigation = useAppNavigation();
+  const driverStatus = useAuthStore((s) => s.driverStatus);
+
+  useEffect(() => {
+    if (driverStatus === 'approved') {
+      navigation.replace('Online');
+    } else if (driverStatus === 'under_review') {
+      navigation.navigate('UnderReview');
+    }
+  }, [driverStatus]);
+
+  if (driverStatus === 'approved' || driverStatus === 'under_review') {
+    return null;
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={theme.colors.deepBlue} />
