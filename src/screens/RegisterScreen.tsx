@@ -3,24 +3,25 @@ import { View, Text, TouchableOpacity, StyleSheet, StatusBar, KeyboardAvoidingVi
 import { theme } from '../theme';
 import { Input } from '../components/Input';
 import { Button } from '../components/Button';
+import { OTPInput } from '../components/OTPInput';
 import { useAppNavigation } from '../hooks/useAppNavigation';
-import { supabase } from '../lib/supabase';
+import { useSignUp, useVerifyEmail } from '../hooks/useAuth';
 import { useAuthStore } from '../store/authStore';
-import { apiClient } from '../api/client';
 
 export const RegisterScreen: React.FC = () => {
   const navigation = useAppNavigation();
-  const setTokens = useAuthStore((s) => s.setTokens);
-  const setDriverId = useAuthStore((s) => s.setDriverId);
   const setDriverStatus = useAuthStore((s) => s.setDriverStatus);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [checkEmail, setCheckEmail] = useState(false);
+  const [step, setStep] = useState<'form' | 'verify'>('form');
+  const [verificationCode, setVerificationCode] = useState('');
+
+  const signUp = useSignUp();
+  const verifyEmail = useVerifyEmail();
 
   const passwordMatch = password.length > 0 && confirmPassword.length > 0 && password === confirmPassword;
   const passwordMismatch = password.length > 0 && confirmPassword.length > 0 && password !== confirmPassword;
@@ -40,68 +41,52 @@ export const RegisterScreen: React.FC = () => {
       return;
     }
 
-    setLoading(true);
     try {
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-      });
-
-      if (signUpError) throw signUpError;
-
-      if (data.session) {
-        setTokens(data.session.access_token, data.session.refresh_token ?? '');
-        if (data.session.user?.id) setDriverId(data.session.user.id);
-
-        try {
-          const statusRes = await apiClient.get('/drivers/me/status');
-          const payload = statusRes.data?.data ?? statusRes.data;
-          const status = payload?.status;
-          if (status) setDriverStatus(status);
-
-          switch (status) {
-            case 'approved':
-              navigation.replace('Online');
-              break;
-            case 'under_review':
-              navigation.replace('UnderReview');
-              break;
-            default:
-              navigation.replace('Terms');
-              break;
-          }
-        } catch {
-          navigation.replace('Terms');
-        }
-      } else {
-        setCheckEmail(true);
-      }
+      await signUp.mutateAsync({ email: email.trim(), password });
+      setStep('verify');
     } catch (err: any) {
-      const message = err?.message ?? 'Error al crear la cuenta';
+      const message = err?.message ?? err?.response?.data?.message ?? 'Error al crear la cuenta';
       setError(message);
-    } finally {
-      setLoading(false);
     }
   };
 
-  if (checkEmail) {
+  const handleVerify = async () => {
+    if (verificationCode.length !== 6) return;
+    setError(null);
+
+    try {
+      await verifyEmail.mutateAsync({ email: email.trim(), code: verificationCode });
+      setDriverStatus('pending');
+      navigation.replace('LoginCredentials');
+    } catch (err: any) {
+      const message = err?.message ?? err?.response?.data?.message ?? 'Error al verificar';
+      setError(message);
+    }
+  };
+
+  if (step === 'verify') {
     return (
       <View style={styles.container}>
         <StatusBar barStyle="dark-content" />
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => { setCheckEmail(false); setError(null); }}>
+          <TouchableOpacity onPress={() => { setStep('form'); setError(null); }}>
             <Text style={styles.backText}>← Volver</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.verifyContent}>
-          <Text style={styles.title}>Revisa tu email</Text>
+          <Text style={styles.title}>Verifica tu email</Text>
           <Text style={styles.subtitle}>
-            Te enviamos un link de confirmacion a {email}. Una vez confirmado, inicia sesion.
+            Te enviamos un codigo de 6 digitos a {email}
           </Text>
+          <View style={{ height: 24 }} />
+          <OTPInput length={6} value={verificationCode} onChange={setVerificationCode} />
           <View style={{ height: 16 }} />
+          {error !== null && <Text style={styles.errorText}>{error}</Text>}
           <Button
-            title="IR A INICIAR SESION"
-            onPress={() => navigation.replace('LoginCredentials')}
+            title={verificationCode.length === 6 && !verifyEmail.isPending ? 'VERIFICAR CODIGO' : 'INICIAR SESION'}
+            onPress={verificationCode.length === 6 ? handleVerify : () => navigation.replace('LoginCredentials')}
+            loading={verifyEmail.isPending}
+            disabled={verificationCode.length !== 6 && verificationCode.length > 0}
             style={styles.button}
           />
         </View>
@@ -167,8 +152,8 @@ export const RegisterScreen: React.FC = () => {
           <Button
             title="CREAR CUENTA"
             onPress={handleRegister}
-            loading={loading}
-            disabled={!email.trim() || !password || !confirmPassword || loading}
+            loading={signUp.isPending}
+            disabled={!email.trim() || !password || !confirmPassword || signUp.isPending}
             style={styles.button}
           />
           {error !== null && <Text style={styles.errorText}>{error}</Text>}
@@ -197,7 +182,7 @@ const styles = StyleSheet.create({
   backText: {
     fontSize: theme.fontSize.md,
     color: theme.colors.deepBlue,
-    fontWeight: theme.fontWeight.semibold,
+    fontWeight: theme.fontWeight.medium,
   },
   scrollContent: {
     paddingHorizontal: theme.spacing.lg,
@@ -218,6 +203,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: theme.spacing.lg,
     paddingTop: theme.spacing.xl,
+    alignItems: 'center',
   },
   inputField: {
     marginBottom: theme.spacing.sm,
@@ -241,6 +227,7 @@ const styles = StyleSheet.create({
   },
   button: {
     marginTop: theme.spacing.sm,
+    width: 327,
   },
   errorText: {
     fontSize: theme.fontSize.sm,
@@ -253,13 +240,5 @@ const styles = StyleSheet.create({
     color: theme.colors.deepBlue,
     textAlign: 'center',
     marginTop: theme.spacing.lg,
-  },
-  resend: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.deepBlue,
-    textAlign: 'center',
-  },
-  resendDisabled: {
-    color: theme.colors.mediumGray,
   },
 });

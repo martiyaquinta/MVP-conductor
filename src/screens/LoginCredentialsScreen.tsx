@@ -4,7 +4,7 @@ import { theme } from '../theme';
 import { Input } from '../components/Input';
 import { Button } from '../components/Button';
 import { useAppNavigation } from '../hooks/useAppNavigation';
-import { supabase } from '../lib/supabase';
+import { useLogin } from '../hooks/useAuth';
 import { useAuthStore } from '../store/authStore';
 import { apiClient } from '../api/client';
 import { driverStatusSchema } from '../api/types';
@@ -14,54 +14,50 @@ export const LoginCredentialsScreen: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const setTokens = useAuthStore((s) => s.setTokens);
-  const setDriverId = useAuthStore((s) => s.setDriverId);
   const setDriverStatus = useAuthStore((s) => s.setDriverStatus);
+
+  const login = useLogin();
 
   const handleLogin = async () => {
     setError(null);
-    setLoading(true);
     try {
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email: username,
-        password,
-      });
-      if (signInError) throw signInError;
-      if (!data.session) throw new Error('No se pudo iniciar sesion');
+      await login.mutateAsync({ email: username.trim(), password });
+    } catch (err: any) {
+      const message = err?.message ?? err?.response?.data?.message ?? 'Error al iniciar sesion';
+      setError(message);
+      return;
+    }
 
-      setTokens(data.session.access_token, data.session.refresh_token ?? '');
-      if (data.session.user?.id) {
-        setDriverId(data.session.user.id);
-      }
-
+    try {
       const response = await apiClient.get('/drivers/me/status');
       const parsed = driverStatusSchema.safeParse(response.data);
       const status = parsed.success ? parsed.data.status : (response.data as { status?: string })?.status;
 
-      if (status === 'under_review') {
-        setDriverStatus('under_review');
-        navigation.navigate('UnderReview');
-      } else if (status === 'approved') {
-        setDriverStatus('approved');
-        navigation.navigate('Online');
-      } else if (status === 'pending') {
-        setDriverStatus('pending');
-        navigation.navigate('Terms');
-      } else {
-        setDriverStatus('approved');
-        navigation.navigate('Online');
+      switch (status) {
+        case 'under_review':
+          setDriverStatus('under_review');
+          navigation.navigate('UnderReview');
+          break;
+        case 'approved':
+          setDriverStatus('approved');
+          navigation.navigate('Online');
+          break;
+        case 'pending':
+          setDriverStatus('pending');
+          navigation.navigate('Terms');
+          break;
+        default:
+          setDriverStatus('approved');
+          navigation.navigate('Online');
       }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error al iniciar sesion';
-      setError(message);
-    } finally {
-      setLoading(false);
+    } catch {
+      setDriverStatus('pending');
+      navigation.navigate('Terms');
     }
   };
 
-  const isDisabled = !username || !password || loading;
+  const isDisabled = !username || !password || login.isPending;
 
   return (
     <View style={styles.container}>
@@ -108,7 +104,7 @@ export const LoginCredentialsScreen: React.FC = () => {
           <Button
             title="INICIAR SESION"
             onPress={handleLogin}
-            loading={loading}
+            loading={login.isPending}
             disabled={isDisabled}
             style={styles.button}
           />

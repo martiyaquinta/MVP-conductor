@@ -9,7 +9,6 @@ import { Navbar } from '../components/Navbar';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { useAppNavigation } from '../hooks/useAppNavigation';
-import { useSignIn } from '../hooks/useAuth';
 import { useAuthStore } from '../store/authStore';
 
 const ARGENTINA_COUNTRY_CODE = '+54';
@@ -26,23 +25,20 @@ function formatPhone(digits: string): string {
 
 export const LoginPhoneScreen: React.FC = () => {
   const navigation = useAppNavigation();
-  const signIn = useSignIn();
   const storePhone = useAuthStore((s) => s.setPhone);
   const [phone, setPhone] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const digits = phone.replace(/\D/g, '');
   const isValid = digits.length >= MIN_PHONE_DIGITS;
   const displayPhone = formatPhone(digits);
 
   const handleContinue = async () => {
-    if (!isValid || signIn.isPending) return;
-    try {
-      await signIn.mutateAsync(ARGENTINA_COUNTRY_CODE + digits);
-      storePhone(digits);
-      navigation.navigate('LoginOTP');
-    } catch {
-      // error displayed via signIn.error
-    }
+    if (!isValid || loading) return;
+    setLoading(true);
+    setError('El inicio de sesion por telefono ya no esta disponible. Usa email.');
+    setLoading(false);
   };
 
   return (
@@ -79,7 +75,7 @@ export const LoginPhoneScreen: React.FC = () => {
             onChangeText={(t) => setPhone(t.replace(/\D/g, ''))}
             placeholder="9 XX XXXX-XXXX"
             keyboardType="phone-pad"
-            error={signIn.error?.message}
+            error={error ?? undefined}
             containerStyle={styles.phoneInput}
             testID="phone-input"
           />
@@ -87,7 +83,7 @@ export const LoginPhoneScreen: React.FC = () => {
             title="CONTINUAR"
             onPress={handleContinue}
             disabled={!isValid}
-            loading={signIn.isPending}
+            loading={loading}
             variant="primary"
             style={styles.button}
           />

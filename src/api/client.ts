@@ -2,7 +2,6 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { z } from 'zod';
 import Constants from 'expo-constants';
 import { useAuthStore } from '../store/authStore';
-import { supabase } from '../lib/supabase';
 import { ApiError, apiErrorSchema } from './types';
 
 function getApiUrl(): string {
@@ -104,15 +103,15 @@ apiClient.interceptors.response.use(
         let newRefreshToken: string | null = null;
 
         try {
-          const { data, error: refreshError } = await supabase.auth.refreshSession({
+          const { data } = await apiClient.post('/auth/refresh', {
             refresh_token: refreshToken,
           });
-          if (!refreshError && data.session) {
-            newToken = data.session.access_token;
-            newRefreshToken = data.session.refresh_token ?? refreshToken;
+          if (data?.access_token) {
+            newToken = data.access_token;
+            newRefreshToken = data.refresh_token ?? refreshToken;
           }
         } catch {
-          // Supabase refresh failed
+          // backend refresh failed
         }
 
         if (!newToken) {

@@ -7,8 +7,7 @@ import { queryClient } from '../src/lib/queryClient';
 import { ErrorBoundary } from '../src/components/feedback/ErrorBoundary';
 import { ConnectivityBanner } from '../src/components/feedback/ConnectivityBanner';
 import { useAuthStore } from '../src/store/authStore';
-import { supabase } from '../src/lib/supabase';
-import { getValidated, apiClient } from '../src/api/client';
+import { apiClient } from '../src/api/client';
 import { driverStatusSchema } from '../src/api/types';
 import { theme } from '../src/theme';
 import * as Notifications from 'expo-notifications';
@@ -36,24 +35,27 @@ function AuthRedirectWatcher() {
 function SessionRestore() {
   useEffect(() => {
     const restore = async () => {
-      try {
-        const { data } = await supabase.auth.getSession();
-        if (data.session) {
-          useAuthStore.getState().setTokens(
-            data.session.access_token,
-            data.session.refresh_token ?? '',
-          );
-          useAuthStore.getState().setDriverId(data.session.user.id);
+      const token = useAuthStore.getState().token;
+      if (!token) return;
 
-          try {
-            const statusData = await getValidated('/drivers/me/status', driverStatusSchema);
-            useAuthStore.getState().setDriverStatus(statusData.status);
-          } catch {
-            // driver may not exist yet — silently ignore
+      try {
+        const response = await apiClient.get('/auth/me');
+        const user = response.data;
+        if (user?.id) {
+          useAuthStore.getState().setDriverId(user.id);
+        }
+
+        try {
+          const statusRes = await apiClient.get('/drivers/me/status');
+          const parsed = driverStatusSchema.safeParse(statusRes.data?.data ?? statusRes.data);
+          if (parsed.success) {
+            useAuthStore.getState().setDriverStatus(parsed.data.status);
           }
+        } catch {
+          // driver may not exist yet
         }
       } catch {
-        // getSession failed (network, SDK not ready) — app proceeds unauthenticated
+        // token invalid or expired — app proceeds unauthenticated
       }
     };
     restore();
