@@ -1,3 +1,7 @@
+/**
+ * @deprecated Email-only auth (feature 003). Phone auth removed from main flow.
+ * Kept for reference. Remove when cleanup is confirmed.
+ */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, StatusBar } from 'react-native';
 import { theme } from '../theme';

@@ -1,5 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
 interface PermStatus {
   status: string;
@@ -34,7 +35,9 @@ export async function registerForPush(): Promise<string | null> {
       });
     }
 
-    const token = await Notifications.getExpoPushTokenAsync();
+    const token = await Notifications.getExpoPushTokenAsync({
+      projectId: Constants.expoConfig?.extra?.eas?.projectId ?? Constants.expoConfig?.slug,
+    });
     return token.data;
   } catch (error) {
     console.error('registerForPush failed:', error);

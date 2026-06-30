@@ -1,5 +1,9 @@
+/**
+ * @deprecated Email-only auth (feature 003). Phone auth removed from main flow.
+ * Kept for reference. Remove when cleanup is confirmed.
+ */
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, KeyboardAvoidingView, ScrollView, Platform } from 'react-native';
 import { theme } from '../theme';
 import { Navbar } from '../components/Navbar';
 import { Button } from '../components/Button';
@@ -50,39 +54,48 @@ export const LoginPhoneScreen: React.FC = () => {
         onBack={() => navigation.goBack()}
         backgroundColor={theme.colors.deepBlue}
       />
-      <View style={styles.content}>
-        <View style={styles.logoCircle}>
-          <View style={styles.logoInner}>
-            <Text style={styles.logoLetter}>L</Text>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.logoCircle}>
+            <View style={styles.logoInner}>
+              <Text style={styles.logoLetter}>L</Text>
+            </View>
           </View>
-        </View>
-        <Text style={styles.wordmark}>Lifty</Text>
-        <Text style={styles.title}>Ingresa tu telefono</Text>
-        <Text style={styles.subtitle}>
-          Te enviaremos un codigo de verificacion por WhatsApp
-        </Text>
-        <Input
-          leftElement={<Text style={styles.countryCode}>+54</Text>}
-          value={displayPhone}
-          onChangeText={(t) => setPhone(t.replace(/\D/g, ''))}
-          placeholder="9 XX XXXX-XXXX"
-          keyboardType="phone-pad"
-          error={signIn.error?.message}
-          containerStyle={styles.phoneInput}
-          testID="phone-input"
-        />
-        <Button
-          title="CONTINUAR"
-          onPress={handleContinue}
-          disabled={!isValid}
-          loading={signIn.isPending}
-          variant="primary"
-          style={styles.button}
-        />
-        <Text style={styles.terms}>
-          Al continuar aceptas los Terminos y Condiciones
-        </Text>
-      </View>
+          <Text style={styles.wordmark}>Lifty</Text>
+          <Text style={styles.title}>Ingresa tu telefono</Text>
+          <Text style={styles.subtitle}>
+            Te enviaremos un codigo de verificacion por SMS
+          </Text>
+          <Input
+            leftElement={<Text style={styles.countryCode}>+54</Text>}
+            value={displayPhone}
+            onChangeText={(t) => setPhone(t.replace(/\D/g, ''))}
+            placeholder="9 XX XXXX-XXXX"
+            keyboardType="phone-pad"
+            error={signIn.error?.message}
+            containerStyle={styles.phoneInput}
+            testID="phone-input"
+          />
+          <Button
+            title="CONTINUAR"
+            onPress={handleContinue}
+            disabled={!isValid}
+            loading={signIn.isPending}
+            variant="primary"
+            style={styles.button}
+          />
+          <Text style={styles.terms}>
+            Al continuar aceptas los Terminos y Condiciones
+          </Text>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 };
@@ -92,11 +105,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.deepBlue,
   },
-  content: {
+  flex: {
     flex: 1,
+  },
+  content: {
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: theme.spacing.lg,
+    paddingBottom: theme.spacing.xl,
     gap: theme.spacing.md,
   },
   logoCircle: {

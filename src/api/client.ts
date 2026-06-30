@@ -1,10 +1,28 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { z } from 'zod';
+import Constants from 'expo-constants';
 import { useAuthStore } from '../store/authStore';
 import { supabase } from '../lib/supabase';
 import { ApiError, apiErrorSchema } from './types';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000/api/v1';
+function getApiUrl(): string {
+  const envUrl = process.env.EXPO_PUBLIC_API_URL;
+  if (envUrl) return envUrl;
+
+  const hostUri = Constants.expoConfig?.hostUri;
+  if (hostUri) {
+    const host = hostUri.split(':')[0];
+    if (host && !host.includes('ngrok')) return `http://${host}:3000/api`;
+  }
+
+  return 'http://localhost:3000/api';
+}
+
+const API_URL = getApiUrl();
+
+if (__DEV__) {
+  console.log('[API] Backend URL:', API_URL);
+}
 
 export const apiClient = axios.create({
   baseURL: API_URL,
@@ -82,21 +100,41 @@ apiClient.interceptors.response.use(
           throw new Error('No refresh token');
         }
 
-        const { data, error: refreshError } = await supabase.auth.refreshSession({
-          refresh_token: refreshToken,
-        });
+        let newToken: string | null = null;
+        let newRefreshToken: string | null = null;
 
-        if (refreshError || !data.session) {
-          throw refreshError ?? new Error('Refresh failed');
+        try {
+          const { data, error: refreshError } = await supabase.auth.refreshSession({
+            refresh_token: refreshToken,
+          });
+          if (!refreshError && data.session) {
+            newToken = data.session.access_token;
+            newRefreshToken = data.session.refresh_token ?? refreshToken;
+          }
+        } catch {
+          // Supabase refresh failed — try backend refresh
         }
 
-        const newToken = data.session.access_token;
-        const newRefreshToken = data.session.refresh_token ?? refreshToken;
+        if (!newToken) {
+          try {
+            const { data: backendData } = await apiClient.post('/auth/refresh', {
+              refresh_token: refreshToken,
+            }, { _skipAuth: true } as any);
+            if (backendData.access_token) {
+              newToken = backendData.access_token;
+              newRefreshToken = backendData.refresh_token ?? refreshToken;
+            }
+          } catch {
+            // backend refresh also failed
+          }
+        }
 
-        useAuthStore.getState().setTokens(newToken, newRefreshToken);
+        if (!newToken) {
+          throw new Error('Refresh failed');
+        }
 
+        useAuthStore.getState().setTokens(newToken, newRefreshToken ?? refreshToken);
         processQueue(null, newToken);
-
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
         return apiClient(originalRequest);
       } catch (refreshError) {
@@ -126,11 +164,16 @@ apiClient.interceptors.response.use(
     }
 
     if (error.code === 'ERR_NETWORK' || error.code === 'ERR_TIMEOUT' || error.code === 'ERR_CANCELED') {
+      const errorMap: Record<string, string> = {
+        ERR_NETWORK: 'Sin conexion. Verifica que el backend este corriendo y tu internet funcione.',
+        ERR_TIMEOUT: 'Tiempo de espera agotado. El servidor no responde.',
+        ERR_CANCELED: 'Solicitud cancelada.',
+      };
       return Promise.reject(
         new ApiError({
           error: {
             code: 'NETWORK_ERROR',
-            message: 'Sin conexion. Verifica tu internet.',
+            message: errorMap[error.code] ?? 'Sin conexion. Verifica tu internet.',
             status: 0,
           },
           meta: { timestamp: new Date().toISOString() },

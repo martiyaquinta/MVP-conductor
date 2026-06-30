@@ -28,7 +28,7 @@ export const WelcomeScreen: React.FC = () => {
       <View style={styles.spacer} />
       <Button
         title="CREAR CUENTA"
-        onPress={() => navigation.navigate('LoginPhone')}
+        onPress={() => navigation.navigate('Register')}
         style={styles.button}
         textStyle={styles.buttonText}
       />

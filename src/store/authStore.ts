@@ -55,7 +55,6 @@ export const useAuthStore = create<AuthState>()(
         refreshToken: state.refreshToken,
         driverId: state.driverId,
         isAuthenticated: state.isAuthenticated,
-        phone: state.phone,
         driverStatus: state.driverStatus,
       }),
     }

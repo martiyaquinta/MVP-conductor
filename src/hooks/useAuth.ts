@@ -2,12 +2,16 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 
+/**
+ * @deprecated Email-only auth (feature 003). Phone OTP auth removed from main flow.
+ * Kept for reference. useSignIn / useVerifyOTP are no longer used by main screens.
+ */
 export function useSignIn() {
   return useMutation({
     mutationFn: async (phone: string) => {
       const { data, error } = await supabase.auth.signInWithOtp({
         phone,
-        options: { channel: 'whatsapp' },
+        options: { channel: 'sms' },
       });
       if (error) throw error;
       return data;
