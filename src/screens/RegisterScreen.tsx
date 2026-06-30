@@ -3,12 +3,10 @@ import { View, Text, TouchableOpacity, StyleSheet, StatusBar, KeyboardAvoidingVi
 import { theme } from '../theme';
 import { Input } from '../components/Input';
 import { Button } from '../components/Button';
-import { OTPInput } from '../components/OTPInput';
 import { useAppNavigation } from '../hooks/useAppNavigation';
-import { apiClient } from '../api/client';
+import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
-
-const COOLDOWN_SECONDS = 30;
+import { apiClient } from '../api/client';
 
 export const RegisterScreen: React.FC = () => {
   const navigation = useAppNavigation();
@@ -16,91 +14,44 @@ export const RegisterScreen: React.FC = () => {
   const setDriverId = useAuthStore((s) => s.setDriverId);
   const setDriverStatus = useAuthStore((s) => s.setDriverStatus);
 
-  const [step, setStep] = useState<'email' | 'verify'>('email');
   const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [cooldown, setCooldown] = useState(0);
+  const [checkEmail, setCheckEmail] = useState(false);
 
   const passwordMatch = password.length > 0 && confirmPassword.length > 0 && password === confirmPassword;
   const passwordMismatch = password.length > 0 && confirmPassword.length > 0 && password !== confirmPassword;
 
-  const handleSendOtp = async () => {
+  const handleRegister = async () => {
     setError(null);
     if (!email.trim()) {
       setError('Ingresa tu email');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await apiClient.post('/auth/register/email', { email: email.trim() });
-      setStep('verify');
-    } catch (err: any) {
-      const message = err?.error?.message ?? err?.message ?? 'Error al enviar el codigo';
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleResend = async () => {
-    if (cooldown > 0 || loading) return;
-    setLoading(true);
-    setError(null);
-    try {
-      await apiClient.post('/auth/register/email', { email: email.trim() });
-      setCooldown(COOLDOWN_SECONDS);
-    } catch (err: any) {
-      const message = err?.error?.message ?? err?.message ?? 'Error al reenviar el codigo';
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  React.useEffect(() => {
-    if (cooldown <= 0) return;
-    const interval = setInterval(() => {
-      setCooldown((prev) => {
-        if (prev <= 1) return 0;
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [cooldown]);
-
-  const handleVerify = async () => {
-    setError(null);
-
-    if (otp.length !== 6) {
-      setError('Ingresa el codigo de 6 digitos');
-      return;
-    }
-    if (password.trim() !== confirmPassword.trim()) {
-      setError('Las contrasenas no coinciden');
       return;
     }
     if (password.length < 6) {
       setError('La contrasena debe tener al menos 6 caracteres');
       return;
     }
+    if (password !== confirmPassword) {
+      setError('Las contrasenas no coinciden');
+      return;
+    }
 
     setLoading(true);
     try {
-      const { data } = await apiClient.post('/auth/register/verify-email', {
+      const { data, error: signUpError } = await supabase.auth.signUp({
         email: email.trim(),
-        otp,
         password,
       });
 
-      if (data.access_token) {
-        setTokens(data.access_token, data.refresh_token ?? '');
-        if (data.user?.id) setDriverId(data.user.id);
+      if (signUpError) throw signUpError;
+
+      if (data.session) {
+        setTokens(data.session.access_token, data.session.refresh_token ?? '');
+        if (data.session.user?.id) setDriverId(data.session.user.id);
 
         try {
           const statusRes = await apiClient.get('/drivers/me/status');
@@ -122,41 +73,71 @@ export const RegisterScreen: React.FC = () => {
         } catch {
           navigation.replace('Terms');
         }
+      } else {
+        setCheckEmail(true);
       }
     } catch (err: any) {
-      const message = err?.error?.message ?? err?.message ?? 'Error al verificar el codigo';
+      const message = err?.message ?? 'Error al crear la cuenta';
       setError(message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleBackToEmail = () => {
-    setStep('email');
-    setOtp('');
-    setError(null);
-  };
-
-  if (step === 'verify') {
+  if (checkEmail) {
     return (
       <View style={styles.container}>
         <StatusBar barStyle="dark-content" />
         <View style={styles.header}>
-          <TouchableOpacity onPress={handleBackToEmail}>
+          <TouchableOpacity onPress={() => { setCheckEmail(false); setError(null); }}>
             <Text style={styles.backText}>← Volver</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.verifyContent}>
-          <Text style={styles.title}>Verifica tu email</Text>
+          <Text style={styles.title}>Revisa tu email</Text>
           <Text style={styles.subtitle}>
-            Te enviamos un codigo de 6 digitos a {email}
+            Te enviamos un link de confirmacion a {email}. Una vez confirmado, inicia sesion.
           </Text>
-          <OTPInput length={6} value={otp} onChange={setOtp} />
-          <TouchableOpacity onPress={handleResend} disabled={cooldown > 0 || loading}>
-            <Text style={[styles.resend, (cooldown > 0 || loading) && styles.resendDisabled]}>
-              {cooldown > 0 ? `Reenviar en ${cooldown}s` : 'No te llego? Reenviar'}
-            </Text>
-          </TouchableOpacity>
+          <View style={{ height: 16 }} />
+          <Button
+            title="IR A INICIAR SESION"
+            onPress={() => navigation.replace('LoginCredentials')}
+            style={styles.button}
+          />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Text style={styles.backText}>← Volver</Text>
+        </TouchableOpacity>
+      </View>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={{ height: 16 }} />
+          <Text style={styles.title}>Crear cuenta</Text>
+          <Text style={styles.subtitle}>Ingresa tu email y contrasena para registrarte</Text>
+          <View style={{ height: 8 }} />
+          <Input
+            placeholder="Email"
+            value={email}
+            onChangeText={(t) => { setEmail(t); setError(null); }}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            containerStyle={styles.inputField}
+          />
           <Input
             placeholder="Contrasena"
             value={password}
@@ -185,52 +166,9 @@ export const RegisterScreen: React.FC = () => {
           <View style={{ height: 8 }} />
           <Button
             title="CREAR CUENTA"
-            onPress={handleVerify}
+            onPress={handleRegister}
             loading={loading}
-            disabled={otp.length !== 6 || !password || !confirmPassword || loading}
-            style={styles.button}
-          />
-          {error !== null && <Text style={styles.errorText}>{error}</Text>}
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" />
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backText}>← Volver</Text>
-        </TouchableOpacity>
-      </View>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={{ height: 16 }} />
-          <Text style={styles.title}>Crear cuenta</Text>
-          <Text style={styles.subtitle}>Ingresa tu email y te enviamos un codigo</Text>
-          <View style={{ height: 8 }} />
-          <Input
-            placeholder="Email"
-            value={email}
-            onChangeText={(t) => { setEmail(t); setError(null); }}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            containerStyle={styles.inputField}
-          />
-          <View style={{ height: 8 }} />
-          <Button
-            title="ENVIAR CODIGO"
-            onPress={handleSendOtp}
-            loading={loading}
-            disabled={!email.trim() || loading}
+            disabled={!email.trim() || !password || !confirmPassword || loading}
             style={styles.button}
           />
           {error !== null && <Text style={styles.errorText}>{error}</Text>}
@@ -251,48 +189,41 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
-  scrollContent: {
-    flexGrow: 1,
-    alignItems: 'center',
-    gap: theme.spacing.md,
-    paddingBottom: theme.spacing.xl,
+  header: {
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.lg,
+    paddingBottom: theme.spacing.sm,
   },
-  verifyContent: {
-    flex: 1,
-    alignItems: 'center',
-    gap: theme.spacing.md,
+  backText: {
+    fontSize: theme.fontSize.md,
+    color: theme.colors.deepBlue,
+    fontWeight: theme.fontWeight.semibold,
+  },
+  scrollContent: {
     paddingHorizontal: theme.spacing.lg,
     paddingBottom: theme.spacing.xl,
   },
-  header: {
-    height: theme.dimensions.navbarHeight,
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: theme.spacing.md,
-  },
-  backText: {
-    color: theme.colors.deepBlue,
-    fontSize: theme.fontSize.md,
-    fontWeight: theme.fontWeight.medium,
-  },
   title: {
-    fontSize: theme.fontSize['2xl'],
+    fontSize: theme.fontSize.xl,
     fontWeight: theme.fontWeight.bold,
     color: theme.colors.deepBlue,
-    width: 327,
+    marginBottom: theme.spacing.sm,
   },
   subtitle: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.md,
     color: theme.colors.mediumGray,
-    width: 327,
+    marginBottom: theme.spacing.sm,
+  },
+  verifyContent: {
+    flex: 1,
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.xl,
   },
   inputField: {
-    width: 327,
+    marginBottom: theme.spacing.sm,
   },
   showPasswordRow: {
-    width: 327,
-    alignItems: 'flex-start',
+    marginVertical: theme.spacing.sm,
   },
   showPasswordText: {
     fontSize: theme.fontSize.sm,
@@ -301,33 +232,34 @@ const styles = StyleSheet.create({
   mismatchText: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.dangerRed,
-    width: 327,
+    marginTop: theme.spacing.xs,
   },
   matchText: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.turquoise,
-    width: 327,
-  },
-  resend: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.turquoise,
-  },
-  resendDisabled: {
-    color: theme.colors.mediumGray,
+    marginTop: theme.spacing.xs,
   },
   button: {
-    width: 327,
+    marginTop: theme.spacing.sm,
   },
   errorText: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.dangerRed,
-    width: 327,
+    marginTop: theme.spacing.sm,
     textAlign: 'center',
   },
   loginLink: {
+    fontSize: theme.fontSize.md,
+    color: theme.colors.deepBlue,
+    textAlign: 'center',
+    marginTop: theme.spacing.lg,
+  },
+  resend: {
     fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.turquoise,
+    color: theme.colors.deepBlue,
+    textAlign: 'center',
+  },
+  resendDisabled: {
+    color: theme.colors.mediumGray,
   },
 });

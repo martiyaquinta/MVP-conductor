@@ -112,21 +112,7 @@ apiClient.interceptors.response.use(
             newRefreshToken = data.session.refresh_token ?? refreshToken;
           }
         } catch {
-          // Supabase refresh failed — try backend refresh
-        }
-
-        if (!newToken) {
-          try {
-            const { data: backendData } = await apiClient.post('/auth/refresh', {
-              refresh_token: refreshToken,
-            }, { _skipAuth: true } as any);
-            if (backendData.access_token) {
-              newToken = backendData.access_token;
-              newRefreshToken = backendData.refresh_token ?? refreshToken;
-            }
-          } catch {
-            // backend refresh also failed
-          }
+          // Supabase refresh failed
         }
 
         if (!newToken) {

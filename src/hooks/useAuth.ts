@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
+import { apiClient } from '../api/client';
 
 /**
  * @deprecated Email-only auth (feature 003). Phone OTP auth removed from main flow.
@@ -49,12 +50,16 @@ export function useVerifyOTP() {
 
 export function useSignOut() {
   const clearAuth = useAuthStore((s) => s.clearAuth);
+  const token = useAuthStore((s) => s.token);
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async () => {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
+      if (token) {
+        try { await apiClient.post('/auth/logout'); } catch { /* best-effort */ }
+      }
     },
     onSuccess: () => {
       clearAuth();
